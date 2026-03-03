@@ -13,7 +13,7 @@ from io import BytesIO
 from datetime import datetime
 
 # ====================== CONFIGURAÇÕES (NÃO ALTERE A MENOS QUE PRECISE) ======================
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
+GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/LevantamentoBluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
                            
 LOGO_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/logo.branca.png"
 
@@ -243,6 +243,7 @@ st.caption(
     """
 
 )
+
 
 
 
