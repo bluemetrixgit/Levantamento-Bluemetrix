@@ -14,7 +14,7 @@ from datetime import datetime
 
 # ====================== CONFIGURAÇÕES FÁCEIS DE ALTERAR ======================
 # URL do arquivo Excel (link RAW do GitHub)
-GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
+GITHUB_RAW_URL = "https://github.com/bluemetrixgit/Levantamento-Bluemetrix/blob/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
 
 # URL da logo (link RAW do GitHub - use a versão branca como você indicou)
 LOGO_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/logo.branca.png"
@@ -243,4 +243,5 @@ st.caption(
     • Busca inteligente reconhece nomes parciais e contas conjuntas ("e/ou")  
     • Última atualização dos dados: {datetime.now().strftime('%d/%m/%Y %H:%M')}
     """
+
 )
