@@ -117,14 +117,13 @@ colunas_exibicao = [
     "Status", "Início da Gestão", "Data distrato", "PL", "Data_PL"
 ]
 
-# ====================== TABS (agora 6 abas) ======================
-tab_geral, tab_cliente, tab_fluxo, tab_evolucao, tab_assessor, tab_top10 = st.tabs([
+# ====================== TABS ======================
+tab_geral, tab_cliente, tab_fluxo, tab_evolucao, tab_assessor = st.tabs([
     "📊 Visão Geral",
     "👤 Por Cliente",
     "📈 Fluxo Mensal/Anual",
     "📉 Evolução PL Total",
-    "👥 PL por Assessor",
-    "🏆 Top 10 Clientes"
+    "👥 PL por Assessor"
 ])
 
 # ABA 1: VISÃO GERAL
@@ -159,6 +158,7 @@ with tab_cliente:
 # ABA 3: FLUXO MENSAL/ANUAL
 with tab_fluxo:
     st.header("Contas Novas × Encerramentos por Mês/Ano")
+    
     df["Início da Gestão"] = pd.to_datetime(df["Início da Gestão"], errors='coerce', dayfirst=True)
     df["Data distrato"]     = pd.to_datetime(df["Data distrato"],     errors='coerce', dayfirst=True)
     
@@ -261,56 +261,6 @@ with tab_assessor:
         )
     else:
         st.info("Selecione pelo menos um assessor.")
-
-# ABA 6: TOP 10 CLIENTES
-with tab_top10:
-    st.header("Top 10 Clientes por PL")
-    
-    # Agrupar por cliente (somar PL se houver múltiplas contas)
-    top10 = df_filtrado.groupby("Cliente", as_index=False)["PL"].sum()
-    top10 = top10.sort_values("PL", ascending=False).head(10)
-    
-    # Calcular % do PL total
-    pl_total_filtrado = df_filtrado["PL"].sum()
-    if pl_total_filtrado > 0:
-        top10["% da Carteira"] = (top10["PL"] / pl_total_filtrado * 100).round(2)
-    else:
-        top10["% da Carteira"] = 0.0
-    
-    # Gráfico de pizza
-    fig_pizza = px.pie(
-        top10,
-        values="PL",
-        names="Cliente",
-        title=f"Distribuição do PL - Top 10 Clientes ({periodo_selecionado})",
-        hole=0.3,
-        hover_data=["% da Carteira"]
-    )
-    fig_pizza.update_traces(textposition='inside', textinfo='percent+label')
-    
-    # Correção: legenda separada do showlegend
-    fig_pizza.update_layout(
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.1,
-            xanchor="center",
-            x=0.5
-        )
-    )
-    
-    st.plotly_chart(fig_pizza, use_container_width=True)
-    
-    # Tabela com formatação
-    st.subheader("Top 10 Clientes")
-    st.dataframe(
-        top10.style.format({
-            "PL": "R$ {:,.0f}",
-            "% da Carteira": "{:.2f}%"
-        }),
-        hide_index=True,
-        use_container_width=True
-    )
 
 # ====================== RODAPÉ ======================
 st.caption(f"""
