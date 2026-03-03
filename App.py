@@ -262,7 +262,7 @@ with tab_assessor:
     else:
         st.info("Selecione pelo menos um assessor.")
 
-# ABA 6: TOP 10 CLIENTES (nova)
+# ABA 6: TOP 10 CLIENTES
 with tab_top10:
     st.header("Top 10 Clientes por PL")
     
@@ -272,7 +272,10 @@ with tab_top10:
     
     # Calcular % do PL total
     pl_total_filtrado = df_filtrado["PL"].sum()
-    top10["% da Carteira"] = (top10["PL"] / pl_total_filtrado * 100).round(2)
+    if pl_total_filtrado > 0:
+        top10["% da Carteira"] = (top10["PL"] / pl_total_filtrado * 100).round(2)
+    else:
+        top10["% da Carteira"] = 0.0
     
     # Gráfico de pizza
     fig_pizza = px.pie(
@@ -284,7 +287,18 @@ with tab_top10:
         hover_data=["% da Carteira"]
     )
     fig_pizza.update_traces(textposition='inside', textinfo='percent+label')
-    fig_pizza.update_layout(showlegend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5))
+    
+    # Correção: legenda separada do showlegend
+    fig_pizza.update_layout(
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.1,
+            xanchor="center",
+            x=0.5
+        )
+    )
+    
     st.plotly_chart(fig_pizza, use_container_width=True)
     
     # Tabela com formatação
@@ -303,6 +317,7 @@ st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
     Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status como filtro na sidebar
 """)
+
 
 
 
