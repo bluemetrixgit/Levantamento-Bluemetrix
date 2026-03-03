@@ -1,244 +1,196 @@
 # ================================================================
 # APP Streamlit: Controle de Contratos - Consolidado 2026
 # ================================================================
-# Autor: Adaptado para Bluemetrix
-# Objetivo: Ler planilha Excel do GitHub, mostrar consolidados,
-# permitir busca por cliente (incluindo contas conjuntas)
-# ================================================================
-
 import streamlit as st
 import pandas as pd
 import requests
 from io import BytesIO
 from datetime import datetime
+import plotly.express as px
 
-# ====================== CONFIGURAÇÕES (NÃO ALTERE A MENOS QUE PRECISE) ======================
+# ====================== CONFIGURAÇÕES ======================
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/LevantamentoBluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
-                          
 LOGO_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/logo.branca.png"
 
-# Cotação dólar → real (mude aqui quando precisar atualizar)
 USD_TO_BRL = 5.25
 
-# Abas que serão consolidadas
-SHEETS = [
-    "BTG",
-    "XP",
-    "Safra",
-    "Ágora",
-    "XP Internacional",
-    "Pershing",
-    "Interactive Brokers"
-]
+SHEETS = ["BTG", "XP", "Safra", "Ágora", "XP Internacional", "Pershing", "Interactive Brokers"]
 # =============================================================================
 
-# Configuração da página Streamlit
-st.set_page_config(
-    page_title="Controle de Contratos 2026 - Bluemetrix",
-    layout="wide",
-    page_icon="📊"
-)
-
-# Logo no topo da página
+st.set_page_config(page_title="Controle de Contratos 2026", layout="wide", page_icon="📊")
 st.image(LOGO_URL, use_column_width=True)
-
 st.title("📊 Controle de Contratos - Consolidado 2026")
 st.markdown("**Dados lidos diretamente do GitHub • Atualização automática**")
 
-# ====================== FUNÇÃO QUE CARREGA OS DADOS DO EXCEL ======================
-@st.cache_data(ttl=3600)  # cache de 1 hora para não baixar toda vez
+# ====================== CARREGAMENTO COM PARADA NA LINHA EM BRANCO ======================
+@st.cache_data(ttl=3600)
 def carregar_dados():
     try:
-        # Baixa o arquivo Excel do GitHub
         response = requests.get(GITHUB_RAW_URL)
-        response.raise_for_status()  # levanta erro se falhar
-        
-        # Converte os bytes em um "arquivo em memória" que o pandas entende
+        response.raise_for_status()
         excel_bytes = BytesIO(response.content)
-        
-        dfs = []  # lista para guardar os dataframes de cada aba
-        
+
+        dfs = []
         for sheet_name in SHEETS:
             try:
-                # Lê cada aba usando a LINHA 2 como cabeçalho (header=1)
-                df_sheet = pd.read_excel(
-                    excel_bytes,
-                    sheet_name=sheet_name,
-                    header=1
-                )
-                # Adiciona coluna com o nome da corretora
-                df_sheet["Corretora"] = sheet_name
-                dfs.append(df_sheet)
+                df = pd.read_excel(excel_bytes, sheet_name=sheet_name, header=1)
+                
+                # PARA DE LER APÓS A PRIMEIRA LINHA COMPLETAMENTE EM BRANCO
+                df = df.dropna(how='all').reset_index(drop=True)
+                
+                df["Corretora"] = sheet_name
+                dfs.append(df)
             except Exception as e:
-                st.warning(f"Não foi possível ler a aba '{sheet_name}': {e}")
+                st.warning(f"Erro na aba '{sheet_name}': {e}")
         
-        if not dfs:
-            st.error("Nenhuma aba foi carregada com sucesso.")
-            return pd.DataFrame()
-        
-        # Junta todas as abas em um único dataframe
-        return pd.concat(dfs, ignore_index=True)
-    
+        return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
     except Exception as e:
-        st.error(f"Erro ao baixar o arquivo do GitHub: {e}")
+        st.error(f"Erro ao baixar do GitHub: {e}")
         return pd.DataFrame()
 
-# Carrega os dados
 df = carregar_dados()
-
 if df.empty:
-    st.error("Não foi possível carregar os dados. Verifique a URL do arquivo.")
     st.stop()
 
-# ====================== IDENTIFICA E EXTRAI O PL MAIS RECENTE ======================
+# ====================== EXTRAÇÃO DO PL + COLUNAS NOVAS ======================
 def pegar_pl_mais_recente(row):
     valores = {}
-    for coluna in row.index:
-        nome_coluna = str(coluna).strip()
-        # Procura colunas que parecem datas no formato DD/MM/YYYY
-        if "/" in nome_coluna and len(nome_coluna.split("/")) == 3:
+    for col in row.index:
+        col_str = str(col).strip()
+        if "/" in col_str and len(col_str.split("/")) == 3:
             try:
-                data = pd.to_datetime(nome_coluna, dayfirst=True, errors="coerce")
+                data = pd.to_datetime(col_str, dayfirst=True, errors="coerce")
                 if pd.notna(data):
-                    valor = pd.to_numeric(row[coluna], errors="coerce")
-                    if pd.notna(valor) and valor != 0:
-                        valores[data] = valor
+                    val = pd.to_numeric(row[col], errors="coerce")
+                    if pd.notna(val) and val != 0:
+                        valores[data] = val
             except:
                 continue
-    
     if valores:
-        data_mais_nova = max(valores.keys())
-        return valores[data_mais_nova], data_mais_nova.strftime("%d/%m/%Y")
-    return 0.0, None
+        data_max = max(valores.keys())
+        return round(valores[data_max]), data_max.strftime("%d/%m/%Y")  # arredonda para inteiro
+    return 0, None
 
-# Aplica a função em todas as linhas
-df[["PL", "Data_PL"]] = df.apply(
-    lambda row: pd.Series(pegar_pl_mais_recente(row)),
-    axis=1
-)
+df[["PL", "Data_PL"]] = df.apply(lambda row: pd.Series(pegar_pl_mais_recente(row)), axis=1)
 
-# ====================== CONVERTE VALORES INTERNACIONAIS (USD → BRL) ======================
-contas_internacionais = ["Interactive Brokers", "Pershing", "XP Internacional"]
-mask_internacional = df["Corretora"].isin(contas_internacionais)
-df.loc[mask_internacional, "PL"] = df.loc[mask_internacional, "PL"] * USD_TO_BRL
-df["PL"] = df["PL"].round(2)
+# Conversão internacional
+internacional = ["Interactive Brokers", "Pershing", "XP Internacional"]
+df.loc[df["Corretora"].isin(internacional), "PL"] = (df.loc[df["Corretora"].isin(internacional), "PL"] * USD_TO_BRL).round(0)
 
-# ====================== INTERFACE COM TABS ======================
-tab_geral, tab_cliente = st.tabs(["📊 Visão Geral", "👤 Consolidado por Cliente"])
+# ====================== COLUNAS QUE VAMOS EXIBIR ======================
+colunas_exibicao = [
+    "Corretora", "Cliente", "Conta", "Escritório", "UF", "Assessor", "Carteira",
+    "Status", "Início da Gestão", "Data distrato", "PL", "Data_PL"
+]
+
+# ====================== TABS ======================
+tab_geral, tab_cliente, tab_status, tab_grafico = st.tabs([
+    "📊 Visão Geral", 
+    "👤 Por Cliente", 
+    "📋 Status das Contas",
+    "📈 Fluxo Mensal/Anual"
+])
 
 # ────────────────────────────────────────────────
 # ABA 1: VISÃO GERAL
 # ────────────────────────────────────────────────
 with tab_geral:
-    st.header("Visão Geral de Todas as Contas")
+    st.header("Visão Geral")
+    st.sidebar.header("🔎 Filtros")
     
-    # Filtros na sidebar
-    st.sidebar.header("🔎 Filtros Gerais")
-    filtro_escritorio = st.sidebar.multiselect(
-        "Escritório",
-        options=sorted(df["Escritório"].dropna().unique()),
-        default=[]
-    )
-    filtro_corretora = st.sidebar.multiselect(
-        "Corretora",
-        options=sorted(df["Corretora"].unique()),
-        default=[]
-    )
-    filtro_uf = st.sidebar.multiselect(
-        "UF",
-        options=sorted(df["UF"].dropna().unique()),
-        default=[]
-    )
-    
-    # Aplica os filtros
-    df_filtrado = df.copy()
-    if filtro_escritorio:
-        df_filtrado = df_filtrado[df_filtrado["Escritório"].isin(filtro_escritorio)]
-    if filtro_corretora:
-        df_filtrado = df_filtrado[df_filtrado["Corretora"].isin(filtro_corretora)]
-    if filtro_uf:
-        df_filtrado = df_filtrado[df_filtrado["UF"].isin(filtro_uf)]
-    
-    # Métricas principais
+    filtro_esc = st.sidebar.multiselect("Escritório", sorted(df["Escritório"].dropna().unique()))
+    filtro_corr = st.sidebar.multiselect("Corretora", sorted(df["Corretora"].unique()))
+    filtro_uf = st.sidebar.multiselect("UF", sorted(df["UF"].dropna().unique()))
+
+    df_f = df.copy()
+    if filtro_esc:  df_f = df_f[df_f["Escritório"].isin(filtro_esc)]
+    if filtro_corr: df_f = df_f[df_f["Corretora"].isin(filtro_corr)]
+    if filtro_uf:   df_f = df_f[df_f["UF"].isin(filtro_uf)]
+
     col1, col2, col3 = st.columns(3)
-    col1.metric("Total de Clientes", len(df_filtrado))
-    col2.metric("Patrimônio Total", f"R$ {df_filtrado['PL'].sum():,.2f}")
-    col3.metric("Cotação Dólar", f"R$ {USD_TO_BRL}")
-    
-    # Colunas que vamos exibir
-    colunas_exibicao = ["Corretora", "Cliente", "Conta", "Escritório", "UF", "Assessor", "Carteira", "PL", "Data_PL"]
-    
-    # Mostra a tabela (sem width=None)
+    col1.metric("Total de Clientes", len(df_f))
+    col2.metric("Patrimônio Total", f"R$ {df_f['PL'].sum():,.0f}")
+    col3.metric("Dólar", f"R$ {USD_TO_BRL}")
+
     st.dataframe(
-        df_filtrado[colunas_exibicao].style.format({"PL": "R$ {:,.2f}"}),
+        df_f[colunas_exibicao].style.format({"PL": "{:,.0f}"}),
         hide_index=True
     )
 
 # ────────────────────────────────────────────────
-# ABA 2: CONSOLIDADO POR CLIENTE
+# ABA 2: POR CLIENTE
 # ────────────────────────────────────────────────
 with tab_cliente:
-    st.header("👤 Consolidado por Cliente")
-    st.markdown(
-        "Digite parte do nome do cliente. Inclui automaticamente contas conjuntas "
-        "(ex: 'Alessandra Charbel' pega também linhas com 'e/ou André ...')."
-    )
-    
-    busca = st.text_input(
-        "🔍 Nome (ou parte do nome) do Cliente",
-        placeholder="Ex: Alessandra Charbel, João Carlos, Kenia Mendes..."
-    )
+    st.header("Consolidado por Cliente")
+    busca = st.text_input("🔍 Nome do cliente", placeholder="Alessandra Charbel")
     
     if busca.strip():
-        # Busca case-insensitive (ignora maiúsculas/minúsculas)
-        mask_cliente = df["Cliente"].astype(str).str.contains(busca.strip(), case=False, na=False)
-        df_cliente = df[mask_cliente].copy()
+        mask = df["Cliente"].astype(str).str.contains(busca.strip(), case=False, na=False)
+        df_c = df[mask].copy()
         
-        if not df_cliente.empty:
-            total_pl = df_cliente["PL"].sum()
-            qtd_contas = len(df_cliente)
+        if not df_c.empty:
+            st.success(f"**Total Consolidado: R$ {df_c['PL'].sum():,.0f}** ({len(df_c)} contas)")
+            st.dataframe(df_c[colunas_exibicao].style.format({"PL": "{:,.0f}"}), hide_index=True)
             
-            st.success(f"**Patrimônio Total Consolidado: R$ {total_pl:,.2f}**")
-            st.info(f"Encontradas **{qtd_contas} conta(s)** em todas as corretoras")
-            
-            # Tabela completa do cliente (sem width=None)
-            st.dataframe(
-                df_cliente[colunas_exibicao].style.format({"PL": "R$ {:,.2f}"}),
-                hide_index=True
-            )
-            
-            # Resumo por corretora (sem width=None)
-            resumo_corretora = df_cliente.groupby("Corretora")["PL"].agg(["sum", "count"]).round(2)
-            resumo_corretora.columns = ["Patrimônio Total", "Nº de Contas"]
-            st.subheader("Resumo por Corretora")
-            st.dataframe(
-                resumo_corretora.style.format({"Patrimônio Total": "R$ {:,.2f}"}),
-                hide_index=True
-            )
-            
-            # Botão de download específico desse cliente
-            csv_cliente = df_cliente[colunas_exibicao].to_csv(index=False).encode("utf-8")
-            st.download_button(
-                label="📥 Baixar apenas este cliente (CSV)",
-                data=csv_cliente,
-                file_name=f"Cliente_{busca.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.csv",
-                mime="text/csv"
-            )
+            csv = df_c[colunas_exibicao].to_csv(index=False).encode()
+            st.download_button("Baixar este cliente", csv, f"{busca.replace(' ','_')}.csv", "text/csv")
         else:
-            st.warning(f"Nenhuma conta encontrada para '{busca}'.")
-    else:
-        st.info("Digite o nome do cliente acima para ver o consolidado completo.")
+            st.warning("Nenhuma conta encontrada.")
 
-# ====================== RODAPÉ / INFORMAÇÕES ======================
-st.markdown("---")
-st.caption(
-    f"""
-    • PL extraído automaticamente da coluna de data mais recente (formato DD/MM/YYYY)  
-    • Contas internacionais convertidas usando USD = R$ {USD_TO_BRL}  
-    • Busca inteligente reconhece nomes parciais e contas conjuntas ("e/ou")  
-    • Última atualização dos dados: {datetime.now().strftime('%d/%m/%Y %H:%M')}
-    """
-)
+# ────────────────────────────────────────────────
+# ABA 3: STATUS DAS CONTAS
+# ────────────────────────────────────────────────
+with tab_status:
+    st.header("Status das Contas")
+    
+    status_count = df["Status"].value_counts().reindex(["Ativo", "Encerrado", "Inativo"], fill_value=0)
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Ativas", status_count.get("Ativo", 0))
+    col2.metric("Encerradas", status_count.get("Encerrado", 0))
+    col3.metric("Inativas", status_count.get("Inativo", 0))
+    
+    st.dataframe(status_count.reset_index(), hide_index=True)
+
+# ────────────────────────────────────────────────
+# ABA 4: GRÁFICO DE FLUXO (NOVAS × ENCERRADAS)
+# ────────────────────────────────────────────────
+with tab_grafico:
+    st.header("Contas Novas × Encerramentos por Mês/Ano")
+    
+    # Converter datas
+    df["Início da Gestão"] = pd.to_datetime(df["Início da Gestão"], errors="coerce", dayfirst=True)
+    df["Data distrato"]     = pd.to_datetime(df["Data distrato"],     errors="coerce", dayfirst=True)
+    
+    # Contagem de novas contas por mês
+    novos = df[df["Início da Gestão"].notna()].copy()
+    novos["Ano-Mês"] = novos["Início da Gestão"].dt.to_period("M").astype(str)
+    novos_por_mes = novos.groupby("Ano-Mês").size().reset_index(name="Novas")
+    
+    # Contagem de encerramentos por mês
+    encerrados = df[df["Data distrato"].notna()].copy()
+    encerrados["Ano-Mês"] = encerrados["Data distrato"].dt.to_period("M").astype(str)
+    encerrados_por_mes = encerrados.groupby("Ano-Mês").size().reset_index(name="Encerradas")
+    
+    # Merge e gráfico
+    fluxo = pd.merge(novos_por_mes, encerrados_por_mes, on="Ano-Mês", how="outer").fillna(0)
+    fluxo = fluxo.sort_values("Ano-Mês")
+    
+    fig = px.bar(
+        fluxo, x="Ano-Mês", y=["Novas", "Encerradas"],
+        title="Contas Novas × Encerradas por Mês",
+        labels={"value": "Quantidade", "variable": "Tipo"},
+        barmode="group",
+        color_discrete_sequence=["#00CC66", "#FF3333"]
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+# ====================== RODAPÉ ======================
+st.caption(f"""
+    • PL exibido como número inteiro • Parada automática na primeira linha em branco  
+    • Inclui Status, Início da Gestão e Data distrato • 
+    Última atualização: {datetime.now().strftime('%d/%m/%Y %H:%M')}
+""")
 
 
 
