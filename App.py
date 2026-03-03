@@ -3,7 +3,7 @@
 # ================================================================
 # Autor: Adaptado para Bluemetrix
 # Objetivo: Ler planilha Excel do GitHub, mostrar consolidados,
-#           permitir busca por cliente (incluindo contas conjuntas)
+# permitir busca por cliente (incluindo contas conjuntas)
 # ================================================================
 
 import streamlit as st
@@ -14,7 +14,7 @@ from datetime import datetime
 
 # ====================== CONFIGURAÇÕES (NÃO ALTERE A MENOS QUE PRECISE) ======================
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/LevantamentoBluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
-                           
+                          
 LOGO_URL = "https://raw.githubusercontent.com/bluemetrixgit/Levantamento-Bluemetrix/main/logo.branca.png"
 
 # Cotação dólar → real (mude aqui quando precisar atualizar)
@@ -52,12 +52,12 @@ def carregar_dados():
         # Baixa o arquivo Excel do GitHub
         response = requests.get(GITHUB_RAW_URL)
         response.raise_for_status()  # levanta erro se falhar
-
+        
         # Converte os bytes em um "arquivo em memória" que o pandas entende
         excel_bytes = BytesIO(response.content)
-
+        
         dfs = []  # lista para guardar os dataframes de cada aba
-
+        
         for sheet_name in SHEETS:
             try:
                 # Lê cada aba usando a LINHA 2 como cabeçalho (header=1)
@@ -71,14 +71,14 @@ def carregar_dados():
                 dfs.append(df_sheet)
             except Exception as e:
                 st.warning(f"Não foi possível ler a aba '{sheet_name}': {e}")
-
+        
         if not dfs:
             st.error("Nenhuma aba foi carregada com sucesso.")
             return pd.DataFrame()
-
+        
         # Junta todas as abas em um único dataframe
         return pd.concat(dfs, ignore_index=True)
-
+    
     except Exception as e:
         st.error(f"Erro ao baixar o arquivo do GitHub: {e}")
         return pd.DataFrame()
@@ -131,7 +131,7 @@ tab_geral, tab_cliente = st.tabs(["📊 Visão Geral", "👤 Consolidado por Cli
 # ────────────────────────────────────────────────
 with tab_geral:
     st.header("Visão Geral de Todas as Contas")
-
+    
     # Filtros na sidebar
     st.sidebar.header("🔎 Filtros Gerais")
     filtro_escritorio = st.sidebar.multiselect(
@@ -149,7 +149,7 @@ with tab_geral:
         options=sorted(df["UF"].dropna().unique()),
         default=[]
     )
-
+    
     # Aplica os filtros
     df_filtrado = df.copy()
     if filtro_escritorio:
@@ -158,20 +158,19 @@ with tab_geral:
         df_filtrado = df_filtrado[df_filtrado["Corretora"].isin(filtro_corretora)]
     if filtro_uf:
         df_filtrado = df_filtrado[df_filtrado["UF"].isin(filtro_uf)]
-
+    
     # Métricas principais
     col1, col2, col3 = st.columns(3)
     col1.metric("Total de Clientes", len(df_filtrado))
     col2.metric("Patrimônio Total", f"R$ {df_filtrado['PL'].sum():,.2f}")
     col3.metric("Cotação Dólar", f"R$ {USD_TO_BRL}")
-
+    
     # Colunas que vamos exibir
     colunas_exibicao = ["Corretora", "Cliente", "Conta", "Escritório", "UF", "Assessor", "Carteira", "PL", "Data_PL"]
-
-    # Mostra a tabela
+    
+    # Mostra a tabela (sem width=None)
     st.dataframe(
         df_filtrado[colunas_exibicao].style.format({"PL": "R$ {:,.2f}"}),
-        width=None,           # resolve o warning de depreciação
         hide_index=True
     )
 
@@ -184,40 +183,39 @@ with tab_cliente:
         "Digite parte do nome do cliente. Inclui automaticamente contas conjuntas "
         "(ex: 'Alessandra Charbel' pega também linhas com 'e/ou André ...')."
     )
-
+    
     busca = st.text_input(
         "🔍 Nome (ou parte do nome) do Cliente",
         placeholder="Ex: Alessandra Charbel, João Carlos, Kenia Mendes..."
     )
-
+    
     if busca.strip():
         # Busca case-insensitive (ignora maiúsculas/minúsculas)
         mask_cliente = df["Cliente"].astype(str).str.contains(busca.strip(), case=False, na=False)
         df_cliente = df[mask_cliente].copy()
-
+        
         if not df_cliente.empty:
             total_pl = df_cliente["PL"].sum()
             qtd_contas = len(df_cliente)
-
+            
             st.success(f"**Patrimônio Total Consolidado: R$ {total_pl:,.2f}**")
             st.info(f"Encontradas **{qtd_contas} conta(s)** em todas as corretoras")
-
-            # Tabela completa do cliente
+            
+            # Tabela completa do cliente (sem width=None)
             st.dataframe(
                 df_cliente[colunas_exibicao].style.format({"PL": "R$ {:,.2f}"}),
-                width=None,
                 hide_index=True
             )
-
-            # Resumo por corretora
+            
+            # Resumo por corretora (sem width=None)
             resumo_corretora = df_cliente.groupby("Corretora")["PL"].agg(["sum", "count"]).round(2)
             resumo_corretora.columns = ["Patrimônio Total", "Nº de Contas"]
             st.subheader("Resumo por Corretora")
             st.dataframe(
                 resumo_corretora.style.format({"Patrimônio Total": "R$ {:,.2f}"}),
-                width=None
+                hide_index=True
             )
-
+            
             # Botão de download específico desse cliente
             csv_cliente = df_cliente[colunas_exibicao].to_csv(index=False).encode("utf-8")
             st.download_button(
@@ -228,7 +226,6 @@ with tab_cliente:
             )
         else:
             st.warning(f"Nenhuma conta encontrada para '{busca}'.")
-
     else:
         st.info("Digite o nome do cliente acima para ver o consolidado completo.")
 
@@ -241,9 +238,7 @@ st.caption(
     • Busca inteligente reconhece nomes parciais e contas conjuntas ("e/ou")  
     • Última atualização dos dados: {datetime.now().strftime('%d/%m/%Y %H:%M')}
     """
-
 )
-
 
 
 
