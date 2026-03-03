@@ -167,7 +167,7 @@ with tab_cliente:
             st.warning("Nenhuma conta encontrada.")
 
 # ────────────────────────────────────────────────
-# ABA 3: FLUXO MENSAL/ANUAL (mantida)
+# ABA 3: FLUXO MENSAL/ANUAL
 # ────────────────────────────────────────────────
 with tab_fluxo:
     st.header("Contas Novas × Encerramentos por Mês/Ano")
@@ -252,6 +252,7 @@ with tab_assessor:
         
         df_pl_ass = pd.DataFrame(pl_por_ass).sort_values("Ano-Mês")
         
+        # Gráfico
         fig_ass = px.line(
             df_pl_ass,
             x="Ano-Mês",
@@ -263,10 +264,18 @@ with tab_assessor:
         fig_ass.update_layout(yaxis_tickformat="R$ ,.0f")
         st.plotly_chart(fig_ass, use_container_width=True)
         
+        st.subheader("Tabela por Assessor e Período")
+        
+        # Correção: pivot_table com aggfunc para lidar com possíveis duplicatas
+        tabela_pivot = df_pl_ass.pivot_table(
+            index="Ano-Mês",
+            columns="Assessor",
+            values="PL",
+            aggfunc='sum'  # soma caso haja duplicatas (segurança)
+        ).fillna(0)
+        
         st.dataframe(
-            df_pl_ass.pivot(index="Ano-Mês", columns="Assessor", values="PL")
-              .fillna(0)
-              .style.format("R$ {:,.0f}"),
+            tabela_pivot.style.format("R$ {:,.0f}"),
             use_container_width=True
         )
     else:
