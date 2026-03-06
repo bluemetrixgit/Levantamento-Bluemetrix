@@ -280,29 +280,31 @@ with tab_assessor:
 with tab_anual:
     st.header("Evolução Anual do PL (Janeiro vs Janeiro)")
     
-    # Filtrar apenas colunas de Janeiro
     janeiro_cols = []
     for dt, ano_mes_sort, mes_ano_display, col in datas_pl_disponiveis:
-        if "Janeiro" in mes_ano_display:
+        if "Janeiro" in mes_ano_display or "Jan" in mes_ano_display:  # mais flexível
             pl_val = df_filtrado[col].apply(pd.to_numeric, errors='coerce').sum()
-            if pd.notna(pl_val):
+            if pd.notna(pl_val) and pl_val > 0:  # ignora zeros para evitar ruído
                 janeiro_cols.append({
                     "Ano": dt.year,
                     "PL Janeiro": round(pl_val),
                     "Ano-Mês": ano_mes_sort
                 })
     
-    df_janeiro = pd.DataFrame(janeiro_cols).sort_values("Ano")
-    
-    if len(df_janeiro) < 2:
-        st.info("Não há dados suficientes de Janeiro em anos diferentes para comparar.")
+    if not janeiro_cols:
+        st.info("Não foram encontrados dados de PL em Janeiro para comparação anual.")
     else:
-        # Calcular diferença percentual
+        df_janeiro = pd.DataFrame(janeiro_cols)
+        df_janeiro = df_janeiro.sort_values("Ano")  # agora só roda se houver dados
+        
+        # Calcular diferença percentual (apenas a partir do segundo ano)
         df_janeiro["Diferença %"] = df_janeiro["PL Janeiro"].pct_change() * 100
         df_janeiro["Diferença %"] = df_janeiro["Diferença %"].round(2)
-        df_janeiro["Variação"] = df_janeiro["Diferença %"].apply(lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%")
-
-        # Gráfico de barras agrupadas
+        df_janeiro["Variação"] = df_janeiro["Diferença %"].apply(
+            lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if pd.notna(x) else "-"
+        )
+        
+        # Gráfico de barras
         fig_anual = go.Figure()
         fig_anual.add_trace(go.Bar(
             x=df_janeiro["Ano"],
@@ -312,7 +314,7 @@ with tab_anual:
             text=df_janeiro["PL Janeiro"].apply(lambda x: f"R$ {x:,.0f}"),
             textposition="auto"
         ))
-
+        
         fig_anual.update_layout(
             title="Comparativo PL Janeiro Ano a Ano",
             xaxis_title="Ano",
@@ -329,7 +331,13 @@ with tab_anual:
             df_janeiro[["Ano", "PL Janeiro", "Diferença %", "Variação"]].style.format({
                 "PL Janeiro": "R$ {:,.0f}",
                 "Diferença %": "{:.2f}%"
-            }).apply(lambda row: ['background-color: #d4edda' if row["Diferença %"] > 0 else 'background-color: #f8d7da' if row["Diferença %"] < 0 else '' for _ in row], axis=1, subset=["Diferença %"]),
+            }).apply(
+                lambda row: ['background-color: #d4edda' if row["Diferença %"] > 0 else 
+                             'background-color: #f8d7da' if row["Diferença %"] < 0 else '' 
+                             for _ in row], 
+                axis=1, 
+                subset=["Diferença %"]
+            ),
             hide_index=True,
             use_container_width=True
         )
@@ -339,6 +347,7 @@ st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
     Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status e Carteira como filtros na sidebar
 """)
+
 
 
 
