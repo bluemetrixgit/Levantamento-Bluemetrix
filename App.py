@@ -66,14 +66,11 @@ def extrair_datas_pl(df):
             try:
                 dt = pd.to_datetime(col_str, dayfirst=True, errors='coerce')
                 if pd.notna(dt):
-                    # Formato YYYY-MM para ordenação correta
                     ano_mes_sort = dt.strftime("%Y-%m")
-                    # Formato bonito para exibição: Abril/2025
                     mes_ano_display = dt.strftime("%B/%Y")
                     datas_pl.append((dt, ano_mes_sort, mes_ano_display, col_str))
             except:
                 continue
-    # Ordena pela data real (cronológica)
     return sorted(datas_pl, key=lambda x: x[0], reverse=True)
 
 datas_pl_disponiveis = extrair_datas_pl(df)
@@ -99,17 +96,23 @@ df.loc[df["Corretora"].isin(internacional), "PL"] = (df.loc[df["Corretora"].isin
 
 # ====================== FILTROS NA SIDEBAR ======================
 st.sidebar.header("🔎 Filtros Gerais")
+
 filtro_escritorio = st.sidebar.multiselect("Escritório", sorted(df["Escritório"].dropna().unique()))
 filtro_corretora = st.sidebar.multiselect("Corretora", sorted(df["Corretora"].unique()))
 filtro_uf = st.sidebar.multiselect("UF", sorted(df["UF"].dropna().unique()))
 
+# Novo filtro: Carteira
+filtro_carteira = st.sidebar.multiselect("Carteira", sorted(df["Carteira"].dropna().unique()))
+
 status_opcoes = ["Todos"] + sorted(df["Status"].dropna().unique().tolist())
 filtro_status = st.sidebar.multiselect("Status da Conta", status_opcoes, default=["Todos"])
 
+# Aplicação dos filtros (agora usado em todas as abas relevantes)
 df_filtrado = df.copy()
 if filtro_escritorio: df_filtrado = df_filtrado[df_filtrado["Escritório"].isin(filtro_escritorio)]
 if filtro_corretora: df_filtrado = df_filtrado[df_filtrado["Corretora"].isin(filtro_corretora)]
 if filtro_uf:        df_filtrado = df_filtrado[df_filtrado["UF"].isin(filtro_uf)]
+if filtro_carteira:  df_filtrado = df_filtrado[df_filtrado["Carteira"].isin(filtro_carteira)]
 if "Todos" not in filtro_status and filtro_status:
     df_filtrado = df_filtrado[df_filtrado["Status"].isin(filtro_status)]
 
@@ -140,7 +143,7 @@ with tab_geral:
         hide_index=True
     )
 
-# ABA 2: POR CLIENTE (mantido igual)
+# ABA 2: POR CLIENTE
 with tab_cliente:
     st.header("Consolidado por Cliente")
     busca = st.text_input("🔍 Nome (ou parte)", placeholder="Ex: Alessandra Charbel")
@@ -156,17 +159,19 @@ with tab_cliente:
         else:
             st.warning("Nenhuma conta encontrada.")
 
-# ABA 3: FLUXO MENSAL/ANUAL (mantido)
+# ABA 3: FLUXO MENSAL/ANUAL (agora usa df_filtrado)
 with tab_fluxo:
     st.header("Contas Novas × Encerramentos por Mês/Ano")
-    df["Início da Gestão"] = pd.to_datetime(df["Início da Gestão"], errors='coerce', dayfirst=True)
-    df["Data distrato"]     = pd.to_datetime(df["Data distrato"],     errors='coerce', dayfirst=True)
     
-    novos = df[df["Início da Gestão"].notna()].copy()
+    df_temp = df_filtrado.copy()  # usa dados filtrados
+    df_temp["Início da Gestão"] = pd.to_datetime(df_temp["Início da Gestão"], errors='coerce', dayfirst=True)
+    df_temp["Data distrato"]     = pd.to_datetime(df_temp["Data distrato"],     errors='coerce', dayfirst=True)
+    
+    novos = df_temp[df_temp["Início da Gestão"].notna()].copy()
     novos["Ano-Mês"] = novos["Início da Gestão"].dt.strftime("%Y-%m")
     novos_por_mes = novos.groupby("Ano-Mês").size().reset_index(name="Novas")
     
-    encerrados = df[df["Data distrato"].notna()].copy()
+    encerrados = df_temp[df_temp["Data distrato"].notna()].copy()
     encerrados["Ano-Mês"] = encerrados["Data distrato"].dt.strftime("%Y-%m")
     encerrados_por_mes = encerrados.groupby("Ano-Mês").size().reset_index(name="Encerradas")
     
@@ -181,17 +186,17 @@ with tab_fluxo:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ABA 4: EVOLUÇÃO PL TOTAL
+# ABA 4: EVOLUÇÃO PL TOTAL (agora usa df_filtrado)
 with tab_evolucao:
     st.header("Evolução do Patrimônio Total por Mês/Ano")
     
     pl_por_periodo = []
     for _, ano_mes_sort, mes_ano_display, col in datas_pl_disponiveis:
-        pl_val = df[col].apply(pd.to_numeric, errors='coerce').sum()
+        pl_val = df_filtrado[col].apply(pd.to_numeric, errors='coerce').sum()
         if pd.notna(pl_val):
             pl_por_periodo.append({
-                "Ano-Mês": ano_mes_sort,           # para ordenação correta
-                "Período": mes_ano_display,        # para exibição bonita
+                "Ano-Mês": ano_mes_sort,
+                "Período": mes_ano_display,
                 "PL Total": round(pl_val)
             })
     
@@ -210,7 +215,7 @@ with tab_evolucao:
         xaxis_title="Período",
         yaxis_title="PL Total",
         yaxis_tickformat="R$ ,.0f",
-        xaxis_tickformat="%b/%Y"  # mostra como Abr/2025 no eixo
+        xaxis_tickformat="%b/%Y"
     )
     st.plotly_chart(fig_evol, use_container_width=True)
     
@@ -219,7 +224,7 @@ with tab_evolucao:
         hide_index=True
     )
 
-# ABA 5: PL POR ASSESSOR
+# ABA 5: PL POR ASSESSOR (já usa df_filtrado)
 with tab_assessor:
     st.header("Evolução do PL por Assessor")
     
@@ -276,7 +281,7 @@ with tab_assessor:
 # ====================== RODAPÉ ======================
 st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
-    Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status como filtro na sidebar
+    Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status e Carteira como filtros na sidebar
 """)
 
 
