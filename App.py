@@ -276,28 +276,37 @@ with tab_assessor:
     else:
         st.info("Selecione pelo menos um assessor.")
 
-# ABA 6: EVOLUÇÃO ANUAL (Janeiro vs Janeiro)
+# ABA 6: EVOLUÇÃO ANUAL (apenas Janeiro de 2023 a 2026)
 with tab_anual:
-    st.header("Evolução Anual do PL (Janeiro vs Janeiro)")
+    st.header("Evolução Anual do PL (Janeiro 2023–2026)")
     
-    janeiro_cols = []
-    for dt, ano_mes_sort, mes_ano_display, col in datas_pl_disponiveis:
-        if "Janeiro" in mes_ano_display or "Jan" in mes_ano_display:  # mais flexível
+    # Colunas exatas que vamos usar (no formato exato do seu Excel)
+    colunas_janeiro = {
+        2023: "31/01/2023",
+        2024: "31/01/2024",
+        2025: "31/01/2025",
+        2026: "31/01/2026"
+    }
+    
+    janeiro_data = []
+    for ano, col in colunas_janeiro.items():
+        if col in df_filtrado.columns:
             pl_val = df_filtrado[col].apply(pd.to_numeric, errors='coerce').sum()
-            if pd.notna(pl_val) and pl_val > 0:  # ignora zeros para evitar ruído
-                janeiro_cols.append({
-                    "Ano": dt.year,
+            if pd.notna(pl_val) and pl_val > 0:
+                janeiro_data.append({
+                    "Ano": ano,
                     "PL Janeiro": round(pl_val),
-                    "Ano-Mês": ano_mes_sort
+                    "Ano-Mês": f"{ano}-01"
                 })
+        else:
+            st.warning(f"Coluna '{col}' não encontrada na planilha filtrada.")
     
-    if not janeiro_cols:
-        st.info("Não foram encontrados dados de PL em Janeiro para comparação anual.")
+    if not janeiro_data:
+        st.info("Nenhum dado de Janeiro encontrado nas colunas especificadas (31/01/2023 a 31/01/2026).")
     else:
-        df_janeiro = pd.DataFrame(janeiro_cols)
-        df_janeiro = df_janeiro.sort_values("Ano")  # agora só roda se houver dados
+        df_janeiro = pd.DataFrame(janeiro_data).sort_values("Ano")
         
-        # Calcular diferença percentual (apenas a partir do segundo ano)
+        # Calcular diferença percentual entre anos consecutivos
         df_janeiro["Diferença %"] = df_janeiro["PL Janeiro"].pct_change() * 100
         df_janeiro["Diferença %"] = df_janeiro["Diferença %"].round(2)
         df_janeiro["Variação"] = df_janeiro["Diferença %"].apply(
@@ -316,11 +325,11 @@ with tab_anual:
         ))
         
         fig_anual.update_layout(
-            title="Comparativo PL Janeiro Ano a Ano",
+            title="Comparativo PL em Janeiro (2023–2026)",
             xaxis_title="Ano",
             yaxis_title="Patrimônio (R$)",
             yaxis_tickformat="R$ ,.0f",
-            bargap=0.3,
+            bargap=0.4,
             showlegend=False
         )
         
@@ -347,6 +356,7 @@ st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
     Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status e Carteira como filtros na sidebar
 """)
+
 
 
 
