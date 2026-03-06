@@ -309,9 +309,6 @@ with tab_anual:
         # Calcular diferença percentual entre anos consecutivos
         df_janeiro["Diferença %"] = df_janeiro["PL Janeiro"].pct_change() * 100
         df_janeiro["Diferença %"] = df_janeiro["Diferença %"].round(2)
-        df_janeiro["Variação"] = df_janeiro["Diferença %"].apply(
-            lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%" if pd.notna(x) else "-"
-        )
         
         # Gráfico de barras
         fig_anual = go.Figure()
@@ -337,16 +334,10 @@ with tab_anual:
         
         st.subheader("Tabela de Evolução Anual")
         st.dataframe(
-            df_janeiro[["Ano", "PL Janeiro", "Diferença %", "Variação"]].style.format({
+            df_janeiro[["Ano", "PL Janeiro", "Diferença %"]].style.format({
                 "PL Janeiro": "R$ {:,.0f}",
                 "Diferença %": "{:.2f}%"
-            }).apply(
-                lambda row: ['background-color: #d4edda' if row["Diferença %"] > 0 else 
-                             'background-color: #f8d7da' if row["Diferença %"] < 0 else '' 
-                             for _ in row], 
-                axis=1, 
-                subset=["Diferença %"]
-            ),
+            }),
             hide_index=True,
             use_container_width=True
         )
@@ -356,6 +347,7 @@ st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
     Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status e Carteira como filtros na sidebar
 """)
+
 
 
 
