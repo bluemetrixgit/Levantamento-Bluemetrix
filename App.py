@@ -7,6 +7,7 @@ import requests
 from io import BytesIO
 from datetime import datetime
 import plotly.express as px
+import plotly.graph_objects as go
 
 # ====================== CONFIGURAÇÕES ======================
 GITHUB_RAW_URL = "https://raw.githubusercontent.com/bluemetrixgit/LevantamentoBluemetrix/main/Controle%20de%20Contratos%20-%20Atualizado%202026.xlsx"
@@ -100,14 +101,11 @@ st.sidebar.header("🔎 Filtros Gerais")
 filtro_escritorio = st.sidebar.multiselect("Escritório", sorted(df["Escritório"].dropna().unique()))
 filtro_corretora = st.sidebar.multiselect("Corretora", sorted(df["Corretora"].unique()))
 filtro_uf = st.sidebar.multiselect("UF", sorted(df["UF"].dropna().unique()))
-
-# Novo filtro: Carteira
 filtro_carteira = st.sidebar.multiselect("Carteira", sorted(df["Carteira"].dropna().unique()))
 
 status_opcoes = ["Todos"] + sorted(df["Status"].dropna().unique().tolist())
 filtro_status = st.sidebar.multiselect("Status da Conta", status_opcoes, default=["Todos"])
 
-# Aplicação dos filtros (agora usado em todas as abas relevantes)
 df_filtrado = df.copy()
 if filtro_escritorio: df_filtrado = df_filtrado[df_filtrado["Escritório"].isin(filtro_escritorio)]
 if filtro_corretora: df_filtrado = df_filtrado[df_filtrado["Corretora"].isin(filtro_corretora)]
@@ -121,13 +119,14 @@ colunas_exibicao = [
     "Status", "Início da Gestão", "Data distrato", "PL", "Data_PL"
 ]
 
-# ====================== TABS ======================
-tab_geral, tab_cliente, tab_fluxo, tab_evolucao, tab_assessor = st.tabs([
+# ====================== TABS (agora 6 abas) ======================
+tab_geral, tab_cliente, tab_fluxo, tab_evolucao, tab_assessor, tab_anual = st.tabs([
     "📊 Visão Geral",
     "👤 Por Cliente",
     "📈 Fluxo Mensal/Anual",
     "📉 Evolução PL Total",
-    "👥 PL por Assessor"
+    "👥 PL por Assessor",
+    "📅 Evolução Anual"
 ])
 
 # ABA 1: VISÃO GERAL
@@ -143,7 +142,7 @@ with tab_geral:
         hide_index=True
     )
 
-# ABA 2: POR CLIENTE
+# ABA 2: POR CLIENTE (mantido)
 with tab_cliente:
     st.header("Consolidado por Cliente")
     busca = st.text_input("🔍 Nome (ou parte)", placeholder="Ex: Alessandra Charbel")
@@ -159,13 +158,12 @@ with tab_cliente:
         else:
             st.warning("Nenhuma conta encontrada.")
 
-# ABA 3: FLUXO MENSAL/ANUAL (agora usa df_filtrado)
+# ABA 3: FLUXO MENSAL/ANUAL
 with tab_fluxo:
     st.header("Contas Novas × Encerramentos por Mês/Ano")
-    
-    df_temp = df_filtrado.copy()  # usa dados filtrados
+    df_temp = df_filtrado.copy()
     df_temp["Início da Gestão"] = pd.to_datetime(df_temp["Início da Gestão"], errors='coerce', dayfirst=True)
-    df_temp["Data distrato"]     = pd.to_datetime(df_temp["Data distrato"],     errors='coerce', dayfirst=True)
+    df_temp["Data distrato"] = pd.to_datetime(df_temp["Data distrato"], errors='coerce', dayfirst=True)
     
     novos = df_temp[df_temp["Início da Gestão"].notna()].copy()
     novos["Ano-Mês"] = novos["Início da Gestão"].dt.strftime("%Y-%m")
@@ -186,7 +184,7 @@ with tab_fluxo:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-# ABA 4: EVOLUÇÃO PL TOTAL (agora usa df_filtrado)
+# ABA 4: EVOLUÇÃO PL TOTAL (mantido)
 with tab_evolucao:
     st.header("Evolução do Patrimônio Total por Mês/Ano")
     
@@ -224,7 +222,7 @@ with tab_evolucao:
         hide_index=True
     )
 
-# ABA 5: PL POR ASSESSOR (já usa df_filtrado)
+# ABA 5: PL POR ASSESSOR (mantido)
 with tab_assessor:
     st.header("Evolução do PL por Assessor")
     
@@ -278,11 +276,70 @@ with tab_assessor:
     else:
         st.info("Selecione pelo menos um assessor.")
 
+# ABA 6: EVOLUÇÃO ANUAL (Janeiro vs Janeiro)
+with tab_anual:
+    st.header("Evolução Anual do PL (Janeiro vs Janeiro)")
+    
+    # Filtrar apenas colunas de Janeiro
+    janeiro_cols = []
+    for dt, ano_mes_sort, mes_ano_display, col in datas_pl_disponiveis:
+        if "Janeiro" in mes_ano_display:
+            pl_val = df_filtrado[col].apply(pd.to_numeric, errors='coerce').sum()
+            if pd.notna(pl_val):
+                janeiro_cols.append({
+                    "Ano": dt.year,
+                    "PL Janeiro": round(pl_val),
+                    "Ano-Mês": ano_mes_sort
+                })
+    
+    df_janeiro = pd.DataFrame(janeiro_cols).sort_values("Ano")
+    
+    if len(df_janeiro) < 2:
+        st.info("Não há dados suficientes de Janeiro em anos diferentes para comparar.")
+    else:
+        # Calcular diferença percentual
+        df_janeiro["Diferença %"] = df_janeiro["PL Janeiro"].pct_change() * 100
+        df_janeiro["Diferença %"] = df_janeiro["Diferença %"].round(2)
+        df_janeiro["Variação"] = df_janeiro["Diferença %"].apply(lambda x: f"+{x:.2f}%" if x > 0 else f"{x:.2f}%")
+
+        # Gráfico de barras agrupadas
+        fig_anual = go.Figure()
+        fig_anual.add_trace(go.Bar(
+            x=df_janeiro["Ano"],
+            y=df_janeiro["PL Janeiro"],
+            name="PL em Janeiro",
+            marker_color="#1f77b4",
+            text=df_janeiro["PL Janeiro"].apply(lambda x: f"R$ {x:,.0f}"),
+            textposition="auto"
+        ))
+
+        fig_anual.update_layout(
+            title="Comparativo PL Janeiro Ano a Ano",
+            xaxis_title="Ano",
+            yaxis_title="Patrimônio (R$)",
+            yaxis_tickformat="R$ ,.0f",
+            bargap=0.3,
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig_anual, use_container_width=True)
+        
+        st.subheader("Tabela de Evolução Anual")
+        st.dataframe(
+            df_janeiro[["Ano", "PL Janeiro", "Diferença %", "Variação"]].style.format({
+                "PL Janeiro": "R$ {:,.0f}",
+                "Diferença %": "{:.2f}%"
+            }).apply(lambda row: ['background-color: #d4edda' if row["Diferença %"] > 0 else 'background-color: #f8d7da' if row["Diferença %"] < 0 else '' for _ in row], axis=1, subset=["Diferença %"]),
+            hide_index=True,
+            use_container_width=True
+        )
+
 # ====================== RODAPÉ ======================
 st.caption(f"""
     • PL exibido como número inteiro • Conta sem ponto/decimal • 
     Datas DD/MM/YYYY • Linhas de resumo ignoradas • Status e Carteira como filtros na sidebar
 """)
+
 
 
 
